@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Universal Data Explorer</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    canvas { max-width: 100%; margin-top: 30px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    input[type='file'] { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1>Universal Data Explorer</h1>
+  <input type="file" id="fileInput" accept=".csv, .tsv, .xls, .xlsx" />
+  <canvas id="dataChart"></canvas>
+  <div id="output"></div>
+
+  <script>
+    const fileInput = document.getElementById("fileInput");
+    const output = document.getElementById("output");
+    const ctx = document.getElementById("dataChart").getContext("2d");
+    let chartInstance = null;
+
+    fileInput.addEventListener("change", function () {
+      const file = this.files[0];
+      if (!file) return;
+
+      const ext = file.name.split(".").pop().toLowerCase();
+
+      const renderChart = (data, xKey, yKey) => {
+        if (chartInstance) chartInstance.destroy();
+
+        const labels = data.map(row => row[xKey]);
+        const values = data.map(row => parseFloat(row[yKey]));
+
+        chartInstance = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: `${yKey} over ${xKey}`,
+              data: values,
+              borderColor: 'blue',
+              backgroundColor: 'rgba(0, 123, 255, 0.1)',
+              fill: true,
+              tension: 0.1
+            }]
+          },
+          options: {
+            responsive: true,
+            plugins: {
+              title: {
+                display: true,
+                text: `${yKey} vs ${xKey}`
+              }
+            },
+            scales: {
+              x: {
+                type: 'category',
+                title: { display: true, text: xKey }
+              },
+              y: {
+                title: { display: true, text: yKey }
+              }
+            }
+          }
+        });
+      };
+
+      const renderTable = (data) => {
+        if (!data || data.length === 0) {
+          output.innerHTML = "<p>No data found.</p>";
+          return;
+        }
+
+        const headers = Object.keys(data[0]);
+        let html = "<table><thead><tr>" + headers.map(h => `<th>${h}</th>`).join("") + "</tr></thead><tbody>";
+        data.forEach(row => {
+          html += "<tr>" + headers.map(h => `<td>${row[h] || ""}</td>`).join("") + "</tr>";
+        });
+        html += "</tbody></table>";
+        output.innerHTML = html;
+
+        // Try to find suitable numeric Y column
+        const xKey = headers[0];
+        const yKey = headers.find(h => h !== xKey && !isNaN(parseFloat(data[0][h])));
+        if (xKey && yKey) {
+          renderChart(data, xKey, yKey);
+        }
+      };
+
+      if (ext === "csv" || ext === "tsv") {
+        Papa.parse(file, {
+          header: true,
+          skipEmptyLines: true,
+          complete: (results) => renderTable(results.data)
+        });
+      } else if (ext === "xls" || ext === "xlsx") {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          const workbook = XLSX.read(e.target.result, { type: "binary" });
+          const sheet = workbook.Sheets[workbook.SheetNames[0]];
+          const json = XLSX.utils.sheet_to_json(sheet);
+          renderTable(json);
+        };
+        reader.readAsBinaryString(file);
+      } else {
+        output.innerHTML = "<p>Unsupported file format.</p>";
+      }
+    });
+  </script>
+</body>
+</html>
